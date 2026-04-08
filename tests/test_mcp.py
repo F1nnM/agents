@@ -51,3 +51,83 @@ async def test_mcp_server_calls_on_tools_changed_callback():
     await server.simulate_tool_list_changed()
 
     assert callback_called.is_set()
+
+
+from livekit.agents.llm.mcp import MCPToolset, MCPTool
+from livekit.agents.llm.tool_context import RawFunctionTool, function_tool
+
+
+def _make_raw_tool(name: str) -> RawFunctionTool:
+    @function_tool(raw_schema={"name": name, "description": f"Tool {name}", "parameters": {"type": "object", "properties": {}}})
+    async def _tool(raw_arguments: dict) -> str:
+        return name
+
+    return _tool
+
+
+class FakeMCPServerWithTools(MCPServer):
+    """MCPServer subclass that returns configurable tools."""
+
+    def __init__(self, tools: list[MCPTool] | None = None) -> None:
+        super().__init__(client_session_timeout_seconds=5)
+        self._fake_tools: list[MCPTool] = tools or []
+        self._is_initialized = False
+
+    @property
+    def initialized(self) -> bool:
+        return self._is_initialized
+
+    def client_streams(self):
+        raise NotImplementedError
+
+    async def initialize(self) -> None:
+        self._is_initialized = True
+
+    async def list_tools(self) -> list[MCPTool]:
+        return self._fake_tools
+
+    def set_tools(self, tools: list[MCPTool]) -> None:
+        self._fake_tools = tools
+
+
+@pytest.mark.asyncio
+async def test_mcp_toolset_refreshes_on_tools_changed():
+    tool_a = _make_raw_tool("tool_a")
+    server = FakeMCPServerWithTools(tools=[tool_a])
+
+    toolset = MCPToolset(id="test", mcp_server=server)
+    await toolset.setup()
+
+    assert len(toolset.tools) == 1
+
+    # Simulate server adding a new tool
+    tool_b = _make_raw_tool("tool_b")
+    server.set_tools([tool_a, tool_b])
+
+    # Trigger the on_tools_changed callback that MCPToolset registered
+    assert server.on_tools_changed is not None
+    await server.on_tools_changed()
+
+    assert len(toolset.tools) == 2
+
+
+@pytest.mark.asyncio
+async def test_mcp_toolset_on_tools_changed_callback_called():
+    tool_a = _make_raw_tool("tool_a")
+    server = FakeMCPServerWithTools(tools=[tool_a])
+
+    callback_called = asyncio.Event()
+
+    async def on_changed() -> None:
+        callback_called.set()
+
+    toolset = MCPToolset(id="test", mcp_server=server)
+    toolset.on_tools_changed = on_changed
+    await toolset.setup()
+
+    # Simulate server changing tools
+    tool_b = _make_raw_tool("tool_b")
+    server.set_tools([tool_b])
+    await server.on_tools_changed()
+
+    assert callback_called.is_set()

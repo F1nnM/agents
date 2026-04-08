@@ -427,6 +427,9 @@ class MCPToolset(Toolset):
     MCPToolset wraps an ``MCPServer`` instance and makes its tools available for
     use by an ``Agent``. On ``setup()``, it connects to the MCP server (if not
     already connected), fetches the available tools, and caches them locally.
+
+    When the MCP server sends a ``ToolListChangedNotification``, the toolset
+    automatically refreshes its tools and invokes ``on_tools_changed`` if set.
     """
 
     def __init__(self, *, id: str, mcp_server: MCPServer) -> None:
@@ -434,6 +437,7 @@ class MCPToolset(Toolset):
         self._mcp_server = mcp_server
         self._initialized = False
         self._lock = asyncio.Lock()
+        self.on_tools_changed: Callable[[], Awaitable[None]] | None = None
 
     async def setup(self, *, reload: bool = False) -> Self:
         """Initialize the MCP server connection and fetch available tools.
@@ -459,7 +463,19 @@ class MCPToolset(Toolset):
             tools = await self._mcp_server.list_tools()
             self._tools = tools
             self._initialized = True
+            self._mcp_server.on_tools_changed = self._on_mcp_tools_changed
             return self
+
+    async def _on_mcp_tools_changed(self) -> None:
+        """Called when the MCP server notifies that its tool list has changed."""
+        async with self._lock:
+            if not self._initialized:
+                return
+            tools = await self._mcp_server.list_tools()
+            self._tools = tools
+
+        if self.on_tools_changed is not None:
+            await self.on_tools_changed()
 
     def filter_tools(self, filter_fn: Callable[[MCPTool], bool]) -> Self:
         """Filter the toolset's tools in-place using a predicate."""
@@ -471,6 +487,7 @@ class MCPToolset(Toolset):
     async def aclose(self) -> None:
         try:
             await super().aclose()
+            self._mcp_server.on_tools_changed = None
             await self._mcp_server.aclose()
         finally:
             self._initialized = False
