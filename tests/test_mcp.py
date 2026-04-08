@@ -2,7 +2,8 @@ import asyncio
 
 import pytest
 
-from livekit.agents.llm.mcp import MCPServer
+from livekit.agents.llm.mcp import MCPServer, MCPTool, MCPToolset
+from livekit.agents.llm.tool_context import RawFunctionTool, function_tool, get_fnc_tool_names
 
 try:
     import mcp.types
@@ -21,44 +22,18 @@ class FakeMCPServer(MCPServer):
 
     async def simulate_tool_list_changed(self) -> None:
         """Simulate receiving a ToolListChangedNotification."""
-        notification = mcp.types.ServerNotification(
-            root=mcp.types.ToolListChangedNotification()
-        )
+        notification = mcp.types.ServerNotification(root=mcp.types.ToolListChangedNotification())
         await self._on_server_message(notification)
 
 
-@pytest.mark.asyncio
-async def test_mcp_server_invalidates_cache_on_tool_list_changed():
-    server = FakeMCPServer()
-    # Manually mark cache as clean to verify invalidation
-    server._cache_dirty = False
-
-    await server.simulate_tool_list_changed()
-
-    assert server._cache_dirty is True
-
-
-@pytest.mark.asyncio
-async def test_mcp_server_calls_on_tools_changed_callback():
-    callback_called = asyncio.Event()
-
-    async def on_changed() -> None:
-        callback_called.set()
-
-    server = FakeMCPServer()
-    server.on_tools_changed = on_changed
-
-    await server.simulate_tool_list_changed()
-
-    assert callback_called.is_set()
-
-
-from livekit.agents.llm.mcp import MCPToolset, MCPTool
-from livekit.agents.llm.tool_context import RawFunctionTool, function_tool
-
-
 def _make_raw_tool(name: str) -> RawFunctionTool:
-    @function_tool(raw_schema={"name": name, "description": f"Tool {name}", "parameters": {"type": "object", "properties": {}}})
+    @function_tool(
+        raw_schema={
+            "name": name,
+            "description": f"Tool {name}",
+            "parameters": {"type": "object", "properties": {}},
+        }
+    )
     async def _tool(raw_arguments: dict) -> str:
         return name
 
@@ -88,6 +63,38 @@ class FakeMCPServerWithTools(MCPServer):
 
     def set_tools(self, tools: list[MCPTool]) -> None:
         self._fake_tools = tools
+
+
+# --- MCPServer tests ---
+
+
+@pytest.mark.asyncio
+async def test_mcp_server_invalidates_cache_on_tool_list_changed():
+    server = FakeMCPServer()
+    # Manually mark cache as clean to verify invalidation
+    server._cache_dirty = False
+
+    await server.simulate_tool_list_changed()
+
+    assert server._cache_dirty is True
+
+
+@pytest.mark.asyncio
+async def test_mcp_server_calls_on_tools_changed_callback():
+    callback_called = asyncio.Event()
+
+    async def on_changed() -> None:
+        callback_called.set()
+
+    server = FakeMCPServer()
+    server.on_tools_changed = on_changed
+
+    await server.simulate_tool_list_changed()
+
+    assert callback_called.is_set()
+
+
+# --- MCPToolset tests ---
 
 
 @pytest.mark.asyncio
@@ -131,9 +138,6 @@ async def test_mcp_toolset_on_tools_changed_callback_called():
     await server.on_tools_changed()
 
     assert callback_called.is_set()
-
-
-from livekit.agents.llm.tool_context import get_fnc_tool_names
 
 
 @pytest.mark.asyncio
