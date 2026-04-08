@@ -431,21 +431,19 @@ class AgentActivity(RecognitionHooks):
         internal tool list before this callback fires, so ``self.tools`` already
         reflects the new MCP tools.
         """
-        # compute diff against previous full tool set for audit trail
         old_tool_names = set(get_fnc_tool_names(self._last_mcp_tool_snapshot))
         new_tool_names = set(get_fnc_tool_names(self.tools))
         tools_added = list(new_tool_names - old_tool_names) or None
         tools_removed = list(old_tool_names - new_tool_names) or None
         self._last_mcp_tool_snapshot = list(self.tools)
 
-        if tools_added or tools_removed:
-            config_update = llm.AgentConfigUpdate(
-                tools_added=tools_added,
-                tools_removed=tools_removed,
-                agent_id=self._agent.id,
-            )
-            config_update._tools = llm.ToolContext(self.tools).flatten()
-            self._agent._chat_ctx.insert(config_update)
+        config_update = llm.AgentConfigUpdate(
+            tools_added=tools_added,
+            tools_removed=tools_removed,
+            agent_id=self._agent.id,
+        )
+        config_update._tools = llm.ToolContext(self.tools).flatten()
+        self._agent._chat_ctx.insert(config_update)
 
         if self._rt_session is not None:
             await self._rt_session.update_tools(llm.ToolContext(self.tools).flatten())
