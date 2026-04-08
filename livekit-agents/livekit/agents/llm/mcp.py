@@ -154,7 +154,10 @@ class MCPServer(ABC):
             logger.debug("MCP server sent ToolListChangedNotification, invalidating tool cache")
             self.invalidate_cache()
             if self.on_tools_changed is not None:
-                await self.on_tools_changed()
+                try:
+                    await self.on_tools_changed()
+                except Exception:
+                    logger.exception("on_tools_changed callback raised an error")
 
     async def list_tools(self) -> list[MCPTool]:
         if self._client is None:
