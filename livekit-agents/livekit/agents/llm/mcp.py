@@ -92,6 +92,8 @@ class MCPServer(ABC):
         self._closing_ev = asyncio.Event()
         self._ready_fut: asyncio.Future[None] | None = None
 
+        self.on_tools_changed: Callable[[], Awaitable[None]] | None = None
+
     @property
     def initialized(self) -> bool:
         return self._client is not None
@@ -122,6 +124,7 @@ class MCPServer(ABC):
                     read_timeout_seconds=timedelta(seconds=self._read_timeout)
                     if self._read_timeout
                     else None,
+                    message_handler=self._on_server_message,
                 ) as client:
                     await client.initialize()
                     self._client = client
@@ -139,6 +142,19 @@ class MCPServer(ABC):
             self._client = None
             self._lk_tools = None
             self._closing_ev.clear()
+
+    async def _on_server_message(
+        self,
+        message: Any,
+    ) -> None:
+        if not isinstance(message, mcp.types.ServerNotification):
+            return
+
+        if isinstance(message.root, mcp.types.ToolListChangedNotification):
+            logger.debug("MCP server sent ToolListChangedNotification, invalidating tool cache")
+            self.invalidate_cache()
+            if self.on_tools_changed is not None:
+                await self.on_tools_changed()
 
     async def list_tools(self) -> list[MCPTool]:
         if self._client is None:
