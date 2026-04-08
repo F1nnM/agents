@@ -708,9 +708,9 @@ class AgentActivity(RecognitionHooks):
             self._interruption_detector.on("error", self._on_error)
             self._interruption_detector.on("overlapping_speech", self._on_overlap_speech_ended)
 
-        from ..llm.mcp import MCPToolset
-
         if self.mcp_servers:
+            from ..llm.mcp import MCPToolset
+
             logger.warning(
                 "passing MCP servers to AgentSession or Agent is deprecated "
                 "and will be removed in a future version. Use `MCPToolset` instead."
@@ -732,8 +732,9 @@ class AgentActivity(RecognitionHooks):
                 return_exceptions=True,
             )
 
+        # subscribe to dynamic tool updates from MCP toolsets
         for toolset in toolsets:
-            if isinstance(toolset, MCPToolset):
+            if hasattr(toolset, "on_tools_changed"):
                 toolset.on_tools_changed = self._on_mcp_tools_changed
 
         self._last_mcp_tool_snapshot = list(self.tools)
@@ -994,12 +995,9 @@ class AgentActivity(RecognitionHooks):
         if self._audio_recognition is not None:
             await self._audio_recognition.aclose()
 
-        # unsubscribe from ALL MCP toolset callbacks (including session-scoped)
-        from ..llm.mcp import MCPToolset
-
-        all_toolsets = [tool for tool in self.tools if isinstance(tool, llm.Toolset)]
-        for toolset in all_toolsets:
-            if isinstance(toolset, MCPToolset):
+        # unsubscribe from MCP toolset callbacks (including session-scoped)
+        for toolset in (t for t in self.tools if isinstance(t, llm.Toolset)):
+            if hasattr(toolset, "on_tools_changed"):
                 toolset.on_tools_changed = None
 
         # close agent-scoped and internally-created toolsets only
