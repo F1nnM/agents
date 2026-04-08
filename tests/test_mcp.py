@@ -131,3 +131,31 @@ async def test_mcp_toolset_on_tools_changed_callback_called():
     await server.on_tools_changed()
 
     assert callback_called.is_set()
+
+
+from livekit.agents.llm.tool_context import get_fnc_tool_names
+
+
+@pytest.mark.asyncio
+async def test_mcp_toolset_on_tools_changed_propagates_new_tool_names():
+    """Verify MCPToolset exposes the changed tools so AgentActivity.update_tools can see them."""
+    tool_a = _make_raw_tool("tool_a")
+    server = FakeMCPServerWithTools(tools=[tool_a])
+
+    received_names: list[list[str]] = []
+
+    async def on_changed() -> None:
+        received_names.append(get_fnc_tool_names(list(toolset.tools)))
+
+    toolset = MCPToolset(id="test", mcp_server=server)
+    toolset.on_tools_changed = on_changed
+    await toolset.setup()
+
+    # Simulate server changing tools
+    tool_b = _make_raw_tool("tool_b")
+    tool_c = _make_raw_tool("tool_c")
+    server.set_tools([tool_b, tool_c])
+    await server.on_tools_changed()
+
+    assert len(received_names) == 1
+    assert sorted(received_names[0]) == ["tool_b", "tool_c"]

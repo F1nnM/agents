@@ -422,6 +422,10 @@ class AgentActivity(RecognitionHooks):
             # for realtime LLM, we assume the server will remove unvalid tool messages
             await self.update_chat_ctx(self._agent._chat_ctx.copy(tools=tools))
 
+    async def _on_mcp_tools_changed(self) -> None:
+        """Called when an MCPToolset detects a tool list change from its server."""
+        await self.update_tools(self._agent._tools)
+
     async def update_chat_ctx(
         self, chat_ctx: llm.ChatContext, *, exclude_invalid_function_calls: bool = True
     ) -> None:
@@ -703,6 +707,13 @@ class AgentActivity(RecognitionHooks):
                 return_exceptions=True,
             )
 
+        # subscribe to dynamic tool updates from MCP toolsets
+        from ..llm.mcp import MCPToolset
+
+        for toolset in toolsets:
+            if isinstance(toolset, MCPToolset):
+                toolset.on_tools_changed = self._on_mcp_tools_changed
+
         if isinstance(self.llm, llm.RealtimeModel):
             rt_reused = reuse_resources is not None and reuse_resources.rt_session is not None
             if rt_reused:
@@ -959,14 +970,22 @@ class AgentActivity(RecognitionHooks):
         if self._audio_recognition is not None:
             await self._audio_recognition.aclose()
 
-        # close the toolsets created internally and the ones from the agent
-        # leave the ones from the session open, they will be closed by the session
-        toolsets = self._mcp_tools + [
+        # unsubscribe from ALL MCP toolset callbacks (including session-scoped)
+        from ..llm.mcp import MCPToolset
+
+        all_toolsets = [tool for tool in self.tools if isinstance(tool, llm.Toolset)]
+        for toolset in all_toolsets:
+            if isinstance(toolset, MCPToolset):
+                toolset.on_tools_changed = None
+
+        # close agent-scoped and internally-created toolsets only
+        # session-scoped toolsets are closed by AgentSession
+        closeable_toolsets = self._mcp_tools + [
             tool for tool in self._agent.tools if isinstance(tool, llm.Toolset)
         ]
-        if toolsets:
+        if closeable_toolsets:
             await asyncio.gather(
-                *(toolset.aclose() for toolset in toolsets), return_exceptions=True
+                *(toolset.aclose() for toolset in closeable_toolsets), return_exceptions=True
             )
 
         await self._cancel_speech_pause(
