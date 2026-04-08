@@ -724,9 +724,13 @@ class AgentActivity(RecognitionHooks):
             self._interruption_detector.on("error", self._on_error)
             self._interruption_detector.on("overlapping_speech", self._on_overlap_speech_ended)
 
-        if self.mcp_servers:
-            from ..llm.mcp import MCPToolset
+        from ..llm.mcp import MCPToolset
 
+        if self.mcp_servers:
+            logger.warning(
+                "passing MCP servers to AgentSession or Agent is deprecated "
+                "and will be removed in a future version. Use `MCPToolset` instead."
+            )
             self._mcp_tools = [
                 MCPToolset(id=utils.shortuuid("mcp_toolset_"), mcp_server=server)
                 for server in self.mcp_servers
@@ -743,9 +747,6 @@ class AgentActivity(RecognitionHooks):
                 *(_setup_toolset(toolset) for toolset in toolsets),
                 return_exceptions=True,
             )
-
-        # subscribe to dynamic tool updates from MCP toolsets
-        from ..llm.mcp import MCPToolset
 
         for toolset in toolsets:
             if isinstance(toolset, MCPToolset):
