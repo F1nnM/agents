@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from livekit.agents.llm.mcp import MCPServer, MCPTool
+from livekit.agents.llm.mcp import MCPServer
 
 try:
     import mcp.types
@@ -15,7 +15,6 @@ class FakeMCPServer(MCPServer):
 
     def __init__(self) -> None:
         super().__init__(client_session_timeout_seconds=5)
-        self._on_tools_changed_called = asyncio.Event()
 
     def client_streams(self):
         raise NotImplementedError("FakeMCPServer doesn't connect")
