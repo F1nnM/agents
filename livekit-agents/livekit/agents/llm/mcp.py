@@ -93,6 +93,8 @@ class MCPServer(ABC):
         self._ready_fut: asyncio.Future[None] | None = None
 
         self.on_tools_changed: Callable[[], Awaitable[None]] | None = None
+        """Optional async callback invoked when the MCP server sends a
+        ``ToolListChangedNotification``. Set by ``MCPToolset`` during setup."""
 
     @property
     def initialized(self) -> bool:
@@ -438,6 +440,9 @@ class MCPToolset(Toolset):
         self._initialized = False
         self._lock = asyncio.Lock()
         self.on_tools_changed: Callable[[], Awaitable[None]] | None = None
+        """Optional async callback invoked after the toolset refreshes its tools
+        in response to a server ``ToolListChangedNotification``. Set by
+        ``AgentActivity`` during toolset setup to propagate changes to the LLM."""
 
     async def setup(self, *, reload: bool = False) -> Self:
         """Initialize the MCP server connection and fetch available tools.
