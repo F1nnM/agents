@@ -423,8 +423,18 @@ class AgentActivity(RecognitionHooks):
             await self.update_chat_ctx(self._agent._chat_ctx.copy(tools=tools))
 
     async def _on_mcp_tools_changed(self) -> None:
-        """Called when an MCPToolset detects a tool list change from its server."""
-        await self.update_tools(self._agent._tools)
+        """Called when an MCPToolset detects a tool list change from its server.
+
+        Unlike ``update_tools`` (which replaces the agent's own tools), this
+        refreshes downstream consumers only. The MCPToolset already updated its
+        internal tool list before this callback fires, so ``self.tools`` already
+        reflects the new MCP tools.
+        """
+        if self._rt_session is not None:
+            await self._rt_session.update_tools(llm.ToolContext(self.tools).flatten())
+
+        if isinstance(self.llm, llm.LLM):
+            await self.update_chat_ctx(self._agent._chat_ctx.copy(tools=self.tools))
 
     async def update_chat_ctx(
         self, chat_ctx: llm.ChatContext, *, exclude_invalid_function_calls: bool = True
